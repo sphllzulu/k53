@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:k53/models/test_session.dart';
 import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -10,6 +11,27 @@ import 'package:k53/models/question.dart';
 import 'package:k53/services/share_tracker.dart';
 
 class HomeScreen extends StatelessWidget {
+  Future<int> _getRemainingAttempts(BuildContext context) async {
+    final supabase = Provider.of<SupabaseService>(context, listen: false);
+    final auth = Provider.of<AuthService>(context, listen: false);
+    final userId = auth.currentUser?.id;
+    if (userId == null) return 0;
+    
+    final today = DateTime.now().toIso8601String().substring(0, 10);
+    return await supabase.getUserAttemptsToday(userId, today);
+  }
+
+  void _showTestHistory(BuildContext context) {
+    // Already implemented in the build method
+    // Just need to scroll to history section
+    final scrollController = PrimaryScrollController.of(context);
+    scrollController?.animateTo(
+      scrollController.position.maxScrollExtent,
+      duration: const Duration(milliseconds: 500),
+      curve: Curves.easeInOut,
+    );
+  }
+
   final String userId;
   HomeScreen({super.key, required this.userId});
 
@@ -33,8 +55,16 @@ class HomeScreen extends StatelessWidget {
         title: const Text('K53 Simulation'),
         actions: [
           IconButton(
+            icon: const Icon(Icons.history),
+            onPressed: () {
+              _showTestHistory(context);
+            },
+            tooltip: 'Test History',
+          ),
+          IconButton(
             icon: const Icon(Icons.logout),
             onPressed: () => Provider.of<AuthService>(context, listen: false).signOut(),
+            tooltip: 'Logout',
           ),
         ],
       ),
@@ -43,8 +73,17 @@ class HomeScreen extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            ElevatedButton(
-              onPressed: () async {
+            Card(
+              elevation: 2,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  children: [
+                    ElevatedButton(
+                      onPressed: () async {
                 if (kDebugMode) {
                   print('Start New Test button pressed');
                 }
@@ -85,15 +124,39 @@ class HomeScreen extends StatelessWidget {
                   );
                 }
               },
-              child: const Text('Start New Test'),
+                      child: const Text('Start New Test'),
+                      style: ElevatedButton.styleFrom(
+                        minimumSize: const Size(double.infinity, 48),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    FutureBuilder<int>(
+                      future: _getRemainingAttempts(context).then((attempts) => 3 - attempts),
+                      builder: (context, snapshot) {
+                        if (snapshot.hasData) {
+                          return Text(
+                            'Daily attempts remaining: ${3 - (snapshot.data ?? 0)}',
+                            style: Theme.of(context).textTheme.titleLarge,
+                          );
+                        }
+                        return const SizedBox.shrink();
+                      },
+                    ),
+                  ],
+                ),
+              ),
             ),
             const SizedBox(height: 20),
             ElevatedButton(
               onPressed: () => _shareViaWhatsApp(context),
               child: const Text('Share Progress via WhatsApp'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.grey.shade200,
+                foregroundColor: Colors.blue.shade800,
+              ),
             ),
             const SizedBox(height: 20),
-            const Text('Your Progress:', style: TextStyle(fontSize: 18)),
+            Text('Your Progress:', style: Theme.of(context).textTheme.titleLarge),
             const SizedBox(height: 8),
             Expanded(
               child: StreamBuilder<List<Map<String, dynamic>>>(
@@ -116,6 +179,10 @@ class HomeScreen extends StatelessWidget {
                     itemBuilder: (context, index) {
                       final session = sessions[index];
                       return Card(
+                        elevation: 2,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
+                        ),
                         child: ListTile(
                           title: Text('Test ${index + 1}'),
                           subtitle: Text(
